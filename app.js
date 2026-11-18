@@ -25,6 +25,7 @@ function limpiar(t) {
     .replace(/([^\n.!?:;»”)\]])\n(?!\n)/g, '$1 ')
     .replace(/https?:\/\/\S+/g, '')
     .replace(/[ \t]{2,}/g, ' ')
+    .replace(/^[ \t]*[-–•*·][ \t]+/gm, '')
     .replace(/\n{3,}/g, '\n\n').trim();
 }
 function limpiarMarkdown(t) {
@@ -97,14 +98,29 @@ async function leerPDF(f, st) {
     status(st, 'Leyendo página ' + i + ' de ' + pdf.numPages + '…', false, true);
     const pg = await pdf.getPage(i);
     const c = await pg.getTextContent();
-    let out = '', linea = '', lastY = null;
+    // armar renglones con su altura en la página
+    const lineas = []; let txt = '', y0 = null, alto = 0;
+    const cerrar = () => { if (txt.trim()) lineas.push({ t: txt.trim(), y: y0, h: alto }); txt = ''; y0 = null; alto = 0; };
     for (const it of c.items) {
       const y = it.transform ? it.transform[5] : null;
-      if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) { out += linea + '\n'; linea = ''; }
-      linea += it.str; lastY = y;
-      if (it.hasEOL) { out += linea + '\n'; linea = ''; lastY = null; }
+      if (y0 !== null && y !== null && Math.abs(y - y0) > 2) cerrar();
+      if (it.str) { if (y0 === null) y0 = y; txt += it.str; alto = Math.max(alto, it.height || Math.abs(it.transform ? it.transform[3] : 0) || 0); }
+      if (it.hasEOL) cerrar();
     }
-    out += linea;
+    cerrar();
+    // separación habitual entre renglones: si un salto es bastante mayor, es un párrafo nuevo
+    const saltos = [];
+    for (let k = 1; k < lineas.length; k++) { const d = lineas[k - 1].y - lineas[k].y; if (d > 0) saltos.push(d); }
+    saltos.sort((a, b) => a - b);
+    const normal = saltos.length ? saltos[Math.floor(saltos.length / 2)] : 0;
+    let out = '';
+    lineas.forEach((l, k) => {
+      if (k === 0) { out = l.t; return; }
+      const d = lineas[k - 1].y - l.y;
+      const vineta = /^([-–•*·]|\d+[.)]|[a-zA-Z][.)])\s/.test(l.t);
+      const nuevoParrafo = vineta || d <= 0 || (normal && d > normal * 1.45);
+      out += (nuevoParrafo ? '\n\n' : '\n') + l.t;
+    });
     if (out.replace(/\s/g, '').length < 20) {   // página escaneada
       status(st, 'La página ' + i + ' es una imagen: reconociendo el texto…', false, true);
       const vp = pg.getViewport({ scale: 2 });
@@ -431,7 +447,7 @@ async function abrirDrive(f) {
 // DOCUMENTO EN PANTALLA
 // =====================================================================
 let parrafos = [], idx = 0, tituloActual = '';
-function dividir(texto) { return texto.split(/\n{2,}/).map(s => s.replace(/\n/g, ' ').trim()).filter(Boolean); }
+function dividir(texto) { return texto.split(/\n{2,}/).map(s => s.replace(/\n/g, ' ').trim()).filter(s => /[\p{L}\p{N}]/u.test(s)); }
 function pintarParrafos() {
   const cont = $('#text'); cont.innerHTML = '';
   parrafos.forEach((p, i) => { const el = document.createElement('p'); el.textContent = p; el.onclick = () => { detener(); idx = i; arrancar(); }; cont.appendChild(el); });

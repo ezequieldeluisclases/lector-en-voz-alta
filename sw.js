@@ -1,5 +1,5 @@
 // Lector en voz alta — service worker
-const VERSION = 'lector-v1';
+const VERSION = 'lector-v2';
 const CORE = ['./', './index.html', './app.js', './config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

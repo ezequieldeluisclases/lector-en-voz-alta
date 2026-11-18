@@ -167,17 +167,27 @@ $('#leerPegado').onclick = () => {
 $('#leerWeb').onclick = () => leerWeb();
 $('#url').addEventListener('keydown', e => { if (e.key === 'Enter') leerWeb(); });
 
+function filtroWeb(md) {   // saca menús, casillas y renglones que son casi solo enlaces
+  return md.split('\n').filter(l => {
+    const s = l.trim(); if (!s) return true;
+    if (/^[-*]\s*\[[ x]\]/i.test(s)) return false;
+    const enlaces = (s.match(/\[[^\]]*\]\([^)]*\)/g) || []).join('').length;
+    return enlaces <= s.length * 0.6;
+  }).join('\n');
+}
 async function textoDeWeb(url) {
   // 1) lector de páginas que devuelve solo el contenido principal
-  try {
-    const r = await fetch('https://r.jina.ai/' + url, { headers: { 'Accept': 'text/plain', 'X-Return-Format': 'markdown' } });
-    if (r.ok) {
+  // primero solo el artículo principal; si la página no tiene, la página entera
+  for (const extra of [{ 'X-Target-Selector': 'article, main, [role=main]' }, {}]) {
+    try {
+      const r = await fetch('https://r.jina.ai/' + url, { headers: Object.assign({ 'Accept': 'text/plain', 'X-Return-Format': 'markdown', 'X-Retain-Images': 'none' }, extra) });
+      if (!r.ok) continue;
       const t = await r.text();
       const titulo = (t.match(/^Title:\s*(.+)$/m) || [])[1] || '';
-      const cuerpo = t.split(/^Markdown Content:\s*$/m)[1] || t;
+      const cuerpo = filtroWeb(t.split(/^Markdown Content:\s*$/m)[1] || t);
       if (cuerpo.replace(/\s/g, '').length > 80) return { titulo, texto: limpiarMarkdown(cuerpo) };
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
   // 2) respaldo: la página completa, quedándonos con los párrafos
   const r2 = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
   if (!r2.ok) throw new Error('La página no respondió.');

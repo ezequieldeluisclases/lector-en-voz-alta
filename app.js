@@ -180,7 +180,7 @@ async function textoDeWeb(url) {
   // primero solo el artículo principal; si la página no tiene, la página entera
   for (const extra of [{ 'X-Target-Selector': 'article, main, [role=main]' }, {}]) {
     try {
-      const r = await fetch('https://r.jina.ai/' + url, { headers: Object.assign({ 'Accept': 'text/plain', 'X-Return-Format': 'markdown', 'X-Retain-Images': 'none' }, extra) });
+      const r = await fetch('https://r.jina.ai/' + url, { headers: Object.assign({ 'Accept': 'text/plain', 'X-Return-Format': 'markdown', 'X-Retain-Images': 'none', 'X-Remove-Selector': 'nav, header, footer, aside, form, button, [role=navigation], [role=banner], [role=contentinfo], [aria-hidden=true], .menu, .sidebar, .share, .social, .mw-editsection, .navbox, .reference, sup, .vector-page-toolbar, .vector-menu, .cookie, #cookie' }, extra) });
       if (!r.ok) continue;
       const t = await r.text();
       const titulo = (t.match(/^Title:\s*(.+)$/m) || [])[1] || '';

@@ -458,6 +458,7 @@ function mostrarDocumento(titulo, texto, extra = {}) {
   parrafos = dividir(texto);
   pintarParrafos();
   $('#docTitle').textContent = titulo;
+  if (!/^Resumen · /.test(titulo)) { textoCompleto = null; $('#btnResumen').classList.remove('hidden'); $('#btnCompleto').classList.add('hidden'); status('resumen', ''); }
   const adj = $('#adjuntos'); adj.innerHTML = '';
   (extra.adjuntos || []).forEach(a => {
     const b = document.createElement('button'); b.className = 'btn sec peq'; b.textContent = '📎 ' + a.nombre;
@@ -472,6 +473,85 @@ function mostrarDocumento(titulo, texto, extra = {}) {
   $('#reader').scrollIntoView({ behavior: 'smooth', block: 'start' });
   if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: titulo, artist: 'Lector en voz alta', artwork: [{ src: 'icon-512.png', sizes: '512x512', type: 'image/png' }] });
 }
+// =====================================================================
+// RESUMEN
+// =====================================================================
+let textoCompleto = null, tituloCompleto = '';
+const VACIAS = new Set('a al algo algunas algunos ante antes como con contra cual cuando de del desde donde dos el ella ellas ellos en entre era eran es esa esas ese eso esos esta estas este esto estos fue fueron ha han hasta hay la las le les lo los mas más me mi mis mucho muy no nos o otra otras otro otros para pero poco por porque que qué se sea ser si sí sin sobre son su sus también tan te tiene tienen todo todos tu tus un una uno unos unas y ya yo hacer puede pueden cada estar está están ser sido son va van vamos hay así'.split(' '));
+function frases(t) { return t.replace(/\s+/g, ' ').split(/(?<=[.!?…]["»”)]?)\s+(?=[¿¡"«“(]?[\p{Lu}\d])/u).map(s => s.trim()).filter(s => s.length > 3); }
+function resumenLocal(texto) {
+  const ps = dividir(texto);
+  const todas = []; ps.forEach((p, ip) => frases(p).forEach(f => todas.push({ f, ip })));
+  if (todas.length <= 4) return ps.join('\n\n');
+  const pal = s => (s.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(w => w.length > 2 && !VACIAS.has(w));
+  const frec = {}; todas.forEach(x => pal(x.f).forEach(w => frec[w] = (frec[w] || 0) + 1));
+  const max = Math.max(1, ...Object.values(frec));
+  todas.forEach((x, i) => {
+    const ws = pal(x.f);
+    x.i = i;
+    x.p = ws.length ? ws.reduce((a, w) => a + frec[w] / max, 0) / Math.sqrt(ws.length) : 0;
+    if (/\d/.test(x.f)) x.p *= 1.25;                 // fechas, horarios, montos
+    if (x.f.length < 25) x.p *= 0.5;                  // títulos sueltos
+    if (i === 0) x.p *= 1.3;
+  });
+  const n = Math.min(12, Math.max(3, Math.round(todas.length * 0.2)));
+  const elegidas = [...todas].sort((a, b) => b.p - a.p).slice(0, n).sort((a, b) => a.i - b.i);
+  const out = []; let grupo = [], ult = -1;
+  elegidas.forEach(x => { if (grupo.length && (x.ip !== ult || grupo.length >= 3)) { out.push(grupo.join(' ')); grupo = []; } grupo.push(x.f); ult = x.ip; });
+  if (grupo.length) out.push(grupo.join(' '));
+  return out.join('\n\n');
+}
+async function resumenGemini(texto) {
+  const k = store.get('gemKey', ''); if (!k) return null;
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': k },
+    body: JSON.stringify({ contents: [{ parts: [{ text: 'Resumí el siguiente texto en castellano rioplatense, en prosa clara para escucharlo en voz alta: sin viñetas, sin títulos, sin asteriscos ni símbolos. Entre uno y seis párrafos cortos según el largo del texto. Conservá los datos concretos: nombres, fechas, horarios, lugares, montos y pedidos. No agregues nada que no esté en el texto.\n\nTEXTO:\n' + texto.slice(0, 100000) }] }] })
+  });
+  if (r.status === 400 || r.status === 401 || r.status === 403) throw new Error('clave');
+  if (r.status === 429) throw new Error('limite');
+  if (!r.ok) throw new Error('gemini');
+  const j = await r.json();
+  const t = (((j.candidates || [])[0] || {}).content || {}).parts;
+  return t ? t.map(p => p.text || '').join('').replace(/[*#_]/g, '').trim() : null;
+}
+async function resumenNavegador(texto) {   // resumidor que traen algunas versiones de Chrome
+  try {
+    if (!('Summarizer' in self) || (await Summarizer.availability()) !== 'available') return null;
+    const s = await Summarizer.create({ type: 'tldr', format: 'plain-text', length: 'long', outputLanguage: 'es' });
+    return (await s.summarize(texto.slice(0, 20000))).trim() || null;
+  } catch (e) { return null; }
+}
+$('#btnResumen').onclick = async () => {
+  if (!parrafos.length) return;
+  const texto = parrafos.join('\n\n');
+  detener();
+  status('resumen', 'Resumiendo…', false, true);
+  let res = null, como = '';
+  try { res = await resumenGemini(texto); if (res) como = 'IA'; }
+  catch (e) { status('resumen', e.message === 'clave' ? 'La clave de Gemini no funciona; uso el resumen simple.' : e.message === 'limite' ? 'Se pasó el límite gratuito de Gemini por ahora; uso el resumen simple.' : 'No pude conectar con Gemini; uso el resumen simple.', true); }
+  if (!res) { res = await resumenNavegador(texto); if (res) como = 'IA'; }
+  if (!res) { res = resumenLocal(texto); como = 'simple'; }
+  textoCompleto = texto; tituloCompleto = tituloActual;
+  const aviso = $('#st-resumen').classList.contains('err') ? $('#st-resumen').innerHTML : '';
+  mostrarDocumento('Resumen · ' + tituloCompleto, limpiar(res));
+  $('#btnResumen').classList.add('hidden'); $('#btnCompleto').classList.remove('hidden');
+  status('resumen', aviso || (como === 'simple' ? 'Resumen armado con las frases principales. Para uno mejor, cargá una clave de Gemini en ⚙ Ajustes.' : ''), !!aviso);
+  arrancar();
+};
+$('#btnCompleto').onclick = () => {
+  if (textoCompleto === null) return;
+  mostrarDocumento(tituloCompleto, textoCompleto);
+  textoCompleto = null;
+};
+$('#gemProbar').onclick = async () => {
+  const k = $('#gemKey').value.trim(); if (!k) { status('gem', 'Pegá la clave primero.', true); return; }
+  store.set('gemKey', k); status('gem', 'Probando…', false, true);
+  try { const r = await resumenGemini('Mañana a las nueve hay reunión de padres en el salón de actos. Traer el cuaderno de comunicaciones firmado.'); status('gem', r ? '¡Funciona! Los resúmenes ahora los escribe la inteligencia artificial.' : 'Respondió vacío; probá de nuevo.'); }
+  catch (e) { store.del('gemKey'); status('gem', e.message === 'clave' ? 'La clave no es válida. Revisá que la copiaste completa.' : 'No pude probarla. ¿Hay internet?', true); }
+};
+$('#gemBorrar').onclick = () => { store.del('gemKey'); $('#gemKey').value = ''; status('gem', 'Listo, se quitó la clave.'); };
+
 function agregarAlDocumento(texto) { parrafos = parrafos.concat(dividir(texto)); pintarParrafos(); marcar(true); }
 function marcar(sinScroll) {
   const ps = document.querySelectorAll('#text p');
@@ -681,6 +761,7 @@ function actualizarTimerInfo() {
 const dlg = $('#ajustes');
 $('#btnAjustes').onclick = () => {
   $('#azKey').value = store.get('azKey', ''); $('#azRegion').value = store.get('azRegion', 'brazilsouth');
+  $('#gemKey').value = store.get('gemKey', ''); status('gem', '');
   $('#optPantalla').checked = store.get('pantalla', false);
   $('#optGrande').checked = store.get('grande', false);
   $('#optAdj').checked = store.get('leerAdj', true);

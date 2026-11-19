@@ -151,6 +151,11 @@ dialog ol{padding-left:20px;font-size:.9rem}
 
   <section id="reader" class="card hidden">
     <p class="doc-title" id="docTitle"></p>
+    <div class="row" style="margin:0 0 10px;flex-wrap:wrap">
+      <button class="btn sec peq" id="btnResumen">📝 Resumir</button>
+      <button class="btn sec peq hidden" id="btnCompleto">📄 Texto completo</button>
+    </div>
+    <div class="status" id="st-resumen" style="margin:0 0 8px"></div>
     <div id="adjuntos"></div>
     <div id="text"></div>
   </section>
@@ -202,6 +207,23 @@ dialog ol{padding-left:20px;font-size:.9rem}
         <li>Buscá «Servicios de voz» (Speech) → Crear.</li>
         <li>Plan de precios: <b>Gratis F0</b>. Región: <b>Brazil South</b>.</li>
         <li>Al terminar, entrá a «Claves y punto de conexión», copiá la <b>Clave 1</b> y pegala arriba.</li>
+      </ol>
+    </details>
+
+    <h3>Resúmenes con inteligencia artificial (opcional)</h3>
+    <p class="hint">Sin clave, la app arma el resumen eligiendo las frases más importantes del texto. Con una clave gratuita de Google Gemini, el resumen lo escribe una inteligencia artificial y queda mucho mejor.</p>
+    <label class="hint">Clave de Gemini</label>
+    <input type="password" id="gemKey" autocomplete="off" placeholder="Pegá acá tu clave">
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="gemProbar">Guardar y probar</button>
+      <button class="btn sec" id="gemBorrar">Quitar</button>
+    </div>
+    <div class="status" id="st-gem"></div>
+    <details style="margin-top:6px"><summary class="hint">¿Cómo consigo la clave?</summary>
+      <ol>
+        <li>Entrá a aistudio.google.com con tu cuenta de Google.</li>
+        <li>Tocá «Get API key» (Obtener clave) → «Create API key» (Crear clave).</li>
+        <li>Copiá la clave y pegala arriba. Es gratis y no pide tarjeta.</li>
       </ol>
     </details>
 
